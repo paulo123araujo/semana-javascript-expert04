@@ -1,9 +1,17 @@
 import { constants } from "../../_shared/consts.js";
+import peerBuilder from "../../_shared/peerBuilder.js";
+import RoomController from "./controller.js";
+import RoomService from "./service.js";
 import RoomSocketBuilder from "./util/roomSocket.js";
+import RoomView from "./view.js";
+import Media from '../../_shared/media.js';
+
+const urlParams = new URLSearchParams(window.location.search)
+const keys = ["id", "topic"]
+const urlData = keys.map(key => [key, urlParams.get(key)])
 
 const room = {
-    id: Date.now(),
-    topic: "qualquer coisa"
+    ...Object.fromEntries(urlData)
 }
 
 const user = {
@@ -11,13 +19,27 @@ const user = {
     username: "Paulo Araujo"
 }
 
-const socket = (new RoomSocketBuilder({
+const peerBuilder = new peerBuilder({
+    peerConfig: constants.peerConfig
+});
+
+const socketBuilder = new RoomSocketBuilder({
     socketUrl: constants.socketUrl,
     namespace: constants.socketNamespaces.room
-}))
-    .setOnUserConnected((user) => console.log("user connected", user))
-    .setOnUserDisconnected((user) => console.log("user disconnected", user))
-    .setOnLobbyUpdated((room) => console.log("lobby updated", room))
-    .build();
+});
 
-socket.emit(constants.events.JOIN_ROOM, { user, room })
+const roomInfo = { room, user };
+
+const roomService = new RoomService({
+    media: Media
+})
+
+const deps = {
+    socketBuilder,
+    roomInfo,
+    view: RoomView,
+    peerBuilder,
+    service: roomService
+}
+
+await RoomController.initialize(deps);

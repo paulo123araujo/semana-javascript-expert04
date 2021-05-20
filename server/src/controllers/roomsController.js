@@ -1,13 +1,29 @@
 import Attendee from "../domain/attendee.js";
 import Room from "../domain/room.js";
 import { constants } from "../util/constants.js";
+import CustomMap from "../util/customMap.js";
 
 export default class RoomsController
 {
     #users = new Map();
 
-    constructor () {
-        this.rooms = new Map();
+    constructor ({ roomsListener }) {
+        this.roomsListener = roomsListener;
+        this.rooms = new CustomMap({
+            observer: this.#roomObserver(),
+            customMapper: this.#mapRoom.bind(this)
+        });
+    }
+
+    notifyRoomSubscribers(rooms) {
+        const event = constants.events.LOBBY_UPDATED
+        this.roomsListener.emit(event, [...rooms.values()])
+    }
+
+    #roomObserver() {
+        return {
+            notify: rooms => this.notifyRoomSubscribers(rooms)
+        }
     }
 
     #joinUserRoom(socket, user, room) {
@@ -80,6 +96,65 @@ export default class RoomsController
         const { id } = socket;
         console.log("connection established with", id)
         this.#updateGlobalUserData(id);
+    }
+
+    disconnect() {
+        console.log("disconnect", socket.id);
+        this.#logoutUser(socket);
+    }
+
+    #notifyUserProfileUpgrade(socket, roomId, user) {
+        socket.to(roomId).emit(constants.events.UPGRADED_USER_PERMISSION, user);
+    }
+
+    #logoutUser(socket) {
+        const userId = socket.id;
+        const user = this.#users.get(userId);
+        const roomId = user.roomId;
+        this.#users.delete(userId);
+
+        if (!this.rooms.has(roomId)) {
+            return;
+        }
+
+        const room = this.rooms.get(roomId);
+        const toBeRemoved = [...room.users].find(({ id }) => id === userId);
+        room.users.delete(toBeRemoved);
+
+        if (!room.users.size) {
+            this.rooms.delete(roomId);
+            return;
+        }
+
+        const disconnectedUserWasOwner = userId === room.owner.id;
+        const onlyOneUserLeft = room.size === 1;
+
+        if (onlyOneUserLeft || disconnectedUserWasOwner) {
+            room.owner = this.#getNewRoomOwner(room, socket)
+        }
+
+        this.rooms.set(roomId, room);
+
+        socket.to(roomId).emit(constants.events.USER_DISCONNECTED, user);
+    }
+
+    #getNewRoomOwner(room, socket) {
+        const users = [...room.users.values()];
+        const activeSpeakers = users.find(user => user.isSpeaker);
+        const [newOwner] = activeSpeakers ? [activeSpeakers] : users;
+        newOwner.isSpeaker = true;
+
+        const outdatedUser = this.#users.get(newOwner.id);
+        const updatedUser = new Attendee({
+            ...outdatedUser,
+            ...newOwner
+        });
+
+        this.#users.set(newOwner.id, updatedUser)
+
+        this.#notifyUserProfileUpgrade(socket, room.id, newOwner);
+
+        return newOwner
     }
 
     joinRoom(socket, { user, room }) {

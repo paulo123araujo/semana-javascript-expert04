@@ -4,12 +4,17 @@ export const constants = {
         room: "room",
         lobby: "lobby"
     },
+    peerConfig: Object.values({
+        id: undefined
+    }),
     events: {
         USER_CONNECTED: "userConnection",
         USER_DISCONNECTED: "userDisconnection",
 
         JOIN_ROOM: "joinRoom",
 
-        LOBBY_UPDATED: "lobbyUpdated"
+        LOBBY_UPDATED: "lobbyUpdated",
+
+        UPGRADED_USER_PERMISSION: "upgradeUserPermission"
     }
 }
